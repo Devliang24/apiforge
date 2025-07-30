@@ -49,7 +49,7 @@ APIForge automatically analyzes your OpenAPI/Swagger specifications and generate
 
 ## 🚀 Quick Start
 
-### Installation
+### 📦 Installation
 
 ```bash
 # Clone the repository
@@ -60,7 +60,7 @@ cd apiforge
 pip install -e .
 ```
 
-### Configuration
+### ⚙️ Configuration
 
 1. Copy the environment template:
 ```bash
@@ -89,7 +89,7 @@ CUSTOM_BASE_URL=https://your-api.com/v1
 CUSTOM_MODEL=your-model-name
 ```
 
-### Basic Usage
+### 🎯 Basic Usage
 
 Generate test cases from an OpenAPI specification:
 
@@ -112,7 +112,7 @@ python run.py --url https://api.example.com/spec.json --output tests.json --mode
 #                  smart (dynamic scheduling), ai-analysis (AI-powered deep analysis)
 ```
 
-### Monitoring Dashboard
+### 📊 Monitoring Dashboard
 
 APIForge includes a powerful monitoring dashboard for tracking test generation progress:
 
@@ -138,7 +138,7 @@ Features:
 - Error tracking and analysis
 - Export functionality for reports (CSV/JSON)
 
-### Programmatic Usage
+### 💻 Programmatic Usage
 
 ```python
 import asyncio
@@ -155,7 +155,7 @@ asyncio.run(generate_tests())
 
 ## 📖 Documentation
 
-### Command Line Interface
+### 💡 Command Line Interface
 
 ```bash
 # Generate test cases
@@ -178,7 +178,7 @@ python run.py info
 python generate_csv_template.py --output test_template.csv
 ```
 
-### Configuration Options
+### ⚙️ Configuration Options
 
 All configuration can be set via environment variables in your `.env` file:
 
@@ -203,7 +203,7 @@ LOG_LEVEL=INFO
 LOG_FORMAT=structured
 ```
 
-### Output Formats
+### 💾 Output Formats
 
 APITestGen supports multiple output formats:
 
@@ -260,45 +260,75 @@ Features:
 - JSON encoding for complex fields
 - Preserves all test case information
 - Includes metadata as comments
-```
 
 ## 🏗️ Architecture
 
 APIForge follows a modular, enterprise-grade architecture:
 
+### 📊 System Overview
+
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   SpecLoader    │───▶│   SpecParser    │───▶│   Generator     │
-│  (Async HTTP)   │    │ (Pydantic Models)│    │ (LLM Provider)  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                        │                        │
-         ▼                        ▼                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Orchestrator                                 │
-│              (Async Workflow Coordination)                      │
-│                    with Task Scheduler                          │
-└─────────────────────────────────────────────────────────────────┘
-         │                        │                        │
-         ▼                        ▼                        ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  SQLite Queue   │    │    Web UI       │    │  JSON/CSV       │
-│  (Persistence)  │    │  (Monitoring)   │    │   Output        │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  📄 SpecLoader  │────▶│  📋 SpecParser  │────▶│  🤖 Generator   │
+│  (Async HTTP)   │     │(Pydantic Models)│     │ (LLM Provider)  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 ▼
+                  ┌──────────────────────────────┐
+                  │     🎭 Orchestrator          │
+                  │  (Workflow Coordination)     │
+                  │    + Task Scheduling         │
+                  └──────────────────────────────┘
+                     │            │            │
+                     ▼            ▼            ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │💾 SQLite │ │📊 Web UI │ │📁 Output │
+              │  Queue   │ │ Monitor  │ │ JSON/CSV │
+              └──────────┘ └──────────┘ └──────────┘
 ```
 
-### Core Components
+### 🔄 Data Flow Sequence
 
-- **SpecLoader**: Async HTTP client for loading OpenAPI specifications
-- **SpecParser**: Pydantic-based parser for extracting endpoint information
-- **Generator**: Test case generation with LLM provider abstraction
-- **Orchestrator**: Workflow coordination with concurrent processing
-- **Task Scheduler**: SQLite-based task queue with retry logic
-- **Web UI**: FastAPI-based dashboard with real-time monitoring
-- **Providers**: Pluggable LLM provider system (OpenAI, Qwen, Custom)
+```
+User Input                  Processing                    Output
+    │                           │                           │
+    ▼                           ▼                           ▼
+🌐 API URL ──▶ 📥 Load Spec ──▶ 🔍 Parse ──▶ 🧠 Generate ──▶ 💾 Save
+                    │               │              │
+                    └───────────────┴──────────────┘
+                                    │
+                              📊 Monitor Progress
+```
+
+### 🧩 Core Components
+
+- **📄 SpecLoader**: Async HTTP client for loading OpenAPI specifications
+- **📋 SpecParser**: Pydantic-based parser for extracting endpoint information
+- **🤖 Generator**: Test case generation with LLM provider abstraction
+- **🎭 Orchestrator**: Workflow coordination with concurrent processing
+- **⚡ Task Scheduler**: SQLite-based task queue with retry logic
+- **📊 Web UI**: FastAPI-based dashboard with real-time monitoring
+- **🔌 Providers**: Pluggable LLM provider system (OpenAI, Qwen, Custom)
+
+### 📈 Performance & Scalability
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Execution Mode Comparison                  │
+├─────────────┬────────────────┬─────────────────────────┤
+│    Mode     │  Concurrency   │      Performance        │
+├─────────────┼────────────────┼─────────────────────────┤
+│ 🚀 Fast     │ Max (10-50)    │ 100+ endpoints/min      │
+│ 🎯 Smart    │ Dynamic (5-20) │ 50-80 endpoints/min     │
+│ 📊 Auto     │ Progressive    │ 30-60 endpoints/min     │
+│ 🧠 AI       │ Limited (1-5)  │ 10-20 endpoints/min     │
+└─────────────┴────────────────┴─────────────────────────┘
+```
 
 ## 🔧 Development
 
-### Setup Development Environment
+### 🔨 Setup Development Environment
 
 ```bash
 # Install development dependencies
@@ -315,7 +345,7 @@ mypy apiforge/
 flake8 apiforge/
 ```
 
-### Adding New LLM Providers
+### 🤖 Adding New LLM Providers
 
 1. Create a new provider class inheriting from `LLMProvider`:
 
@@ -340,7 +370,7 @@ from apiforge.generator import TestCaseGenerator
 TestCaseGenerator.register_provider("custom", CustomProvider)
 ```
 
-### Running Examples
+### 🚀 Running Examples
 
 ```bash
 # Set up environment
@@ -363,7 +393,7 @@ python generate_petstore_tests.py
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
-### Development Workflow
+### 🔄 Development Workflow
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
