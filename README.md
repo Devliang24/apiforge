@@ -162,7 +162,7 @@ asyncio.run(generate_tests())
 python run.py --url <OPENAPI_URL> --output <OUTPUT_FILE> [OPTIONS]
 
 # Show system information
-python run.py info
+python run.py info 
 
 # Available options:
 #   --url, -u          URL of OpenAPI specification (required)
