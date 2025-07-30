@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIForge - 实时监控</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/modern.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold">APIForge</h1>
+                <div class="flex gap-md">
+                    <a href="/" class="nav-link">概览</a>
+                    <a href="/monitor" class="nav-link active">实时监控</a>
+                    <a href="/statistics" class="nav-link">统计分析</a>
+                    <a href="/errors" class="nav-link">错误日志</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="container mt-4">
+        <!-- 项目选择器 -->
+        <div class="card mb-4">
+            <div class="flex justify-between items-center">
+                <div class="select-container">
+                    <label for="projectSelect" class="form-label mb-0">选择项目</label>
+                    <select id="projectSelect" class="form-select">
+                        <option value="">加载中...</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-sm">
+                    <span class="status-dot" id="connectionStatus"></span>
+                    <span id="connectionText">未连接</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 实时进度 -->
+        <div class="grid grid-cols-4 mb-4">
+            <div class="card stat-card">
+                <div class="stat-label">总任务</div>
+                <div class="stat-value" id="totalTasks">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">已完成</div>
+                <div class="stat-value text-success" id="completedTasks">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">进行中</div>
+                <div class="stat-value text-info" id="inProgressTasks">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">失败</div>
+                <div class="stat-value text-danger" id="failedTasks">-</div>
+            </div>
+        </div>
+
+        <!-- Worker状态 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="card-title">Worker状态</h2>
+            </div>
+            <div class="grid grid-cols-3 gap-md">
+                <div class="text-center">
+                    <div class="stat-value text-success" id="idleWorkers">-</div>
+                    <div class="stat-label">空闲Worker</div>
+                </div>
+                <div class="text-center">
+                    <div class="stat-value text-warning" id="busyWorkers">-</div>
+                    <div class="stat-label">繁忙Worker</div>
+                </div>
+                <div class="text-center">
+                    <div class="stat-value text-danger" id="offlineWorkers">-</div>
+                    <div class="stat-label">离线Worker</div>
+                </div>
+            </div>
+            <div class="mt-3" id="workersList">
+                <div class="text-center text-muted">等待Worker信息...</div>
+            </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="card-title">任务进度</h2>
+            </div>
+            <div class="mb-3">
+                <div class="flex justify-between text-sm mb-1">
+                    <span>完成进度</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div style="height: 20px; background: var(--gray-200); border-radius: 10px; overflow: hidden;">
+                    <div id="progressBar" style="height: 100%; background: var(--success); width: 0%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+            <div class="flex justify-between text-sm text-muted">
+                <span>预计剩余时间: <span id="eta">计算中...</span></span>
+                <span>最后更新: <span id="lastUpdate">-</span></span>
+            </div>
+        </div>
+
+        <!-- 实时任务流 -->
+        <div class="card">
+            <div class="card-header flex justify-between items-center">
+                <h2 class="card-title">实时任务流</h2>
+                <div class="flex gap-sm">
+                    <button class="btn btn-sm btn-secondary" onclick="clearTaskLog()">清空</button>
+                    <button class="btn btn-sm btn-secondary" id="pauseBtn" onclick="togglePause()">暂停</button>
+                </div>
+            </div>
+            <div id="taskStream" style="height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.875rem;">
+                <div class="text-center text-muted p-4">等待连接...</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 引入脚本 -->
+    <script src="/static/js/api.js?v=1.0.4"></script>
+    <script src="/static/js/utils-min.js?v=1.0.6"></script>
+    <script src="/static/js/websocket.js"></script>
+    <script>
+        // 全局变量
+        let currentProjectId = null;
+        let isPaused = false;
+        let taskLogBuffer = [];
+        const maxLogItems = 100;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadProjects();
+            setupWebSocketHandlers();
+            
+            // 检查URL参数
+            const params = utils.parseQueryParams();
+            if (params.project_id) {
+                currentProjectId = params.project_id;
+            }
+        });
+
+        // 加载项目列表
+        async function loadProjects() {
+            try {
+                const data = await api.getProjects();
+                const select = document.getElementById('projectSelect');
+                
+                if (!data.projects || data.projects.length === 0) {
+                    select.innerHTML = '<option value="">暂无项目</option>';
+                    return;
+                }
+
+                select.innerHTML = data.projects.map(project => 
+                    `<option value="${project.project_id}" ${project.project_id === currentProjectId ? 'selected' : ''}>
+                        ${project.project_id.substring(0, 8)}... - ${utils.formatDateTime(project.created_at)} (${project.status})
+                    </option>`
+                ).join('');
+
+                // 如果没有预选项目，选择第一个
+                if (!currentProjectId && data.projects.length > 0) {
+                    currentProjectId = data.projects[0].project_id;
+                    select.value = currentProjectId;
+                }
+
+                // 加载项目数据
+                if (currentProjectId) {
+                    loadProjectProgress();
+                    connectWebSocket();
+                }
+
+                // 监听项目切换
+                select.addEventListener('change', function(e) {
+                    currentProjectId = e.target.value;
+                    if (currentProjectId) {
+                        utils.updateQueryParams({ project_id: currentProjectId });
+                        loadProjectProgress();
+                        reconnectWebSocket();
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to load projects:', error);
+            }
+        }
+
+        // 加载项目进度
+        async function loadProjectProgress() {
+            if (!currentProjectId) return;
+
+            try {
+                const data = await api.getProjectProgress(currentProjectId);
+                updateProgressDisplay(data.progress);
+                updateETA(data.eta);
+                
+                // 显示最近任务
+                if (data.recent_tasks && data.recent_tasks.length > 0) {
+                    displayRecentTasks(data.recent_tasks);
+                }
+            } catch (error) {
+                console.error('Failed to load project progress:', error);
+            }
+        }
+
+        // 设置WebSocket处理器
+        function setupWebSocketHandlers() {
+            // 连接状态
+            wsManager.on('connected', () => {
+                updateConnectionStatus('connected');
+                addTaskLogEntry('系统', '✓ WebSocket 已连接', 'success');
+            });
+
+            wsManager.on('disconnected', () => {
+                updateConnectionStatus('disconnected');
+                addTaskLogEntry('系统', '✗ WebSocket 已断开', 'danger');
+            });
+
+            wsManager.on('reconnecting', (data) => {
+                updateConnectionStatus('reconnecting');
+                addTaskLogEntry('系统', `⟳ 重连中... (尝试 ${data.attempt})`, 'warning');
+            });
+
+            // 进度更新
+            wsManager.on('progress_update', (data) => {
+                updateProgressDisplay(data.progress);
+                updateWorkerDisplay(data.workers);
+                updateActiveTasksDisplay(data.active_tasks);
+                document.getElementById('lastUpdate').textContent = utils.formatDateTime(data.timestamp);
+                
+                if (data.latest_completed) {
+                    const workerInfo = data.latest_completed.worker ? 
+                        ` (Worker: ${data.latest_completed.worker.worker_name})` : '';
+                    addTaskLogEntry(
+                        data.latest_completed.endpoint,
+                        '✓ 已完成' + workerInfo,
+                        'success'
+                    );
+                }
+            });
+        }
+
+        // 连接WebSocket
+        function connectWebSocket() {
+            if (!currentProjectId) return;
+            wsManager.connect(currentProjectId);
+        }
+
+        // 重连WebSocket
+        function reconnectWebSocket() {
+            wsManager.disconnect();
+            setTimeout(() => {
+                connectWebSocket();
+            }, 100);
+        }
+
+        // 更新连接状态
+        function updateConnectionStatus(status) {
+            const statusDot = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('connectionText');
+            
+            switch(status) {
+                case 'connected':
+                    statusDot.className = 'status-dot status-success';
+                    statusText.textContent = '已连接';
+                    break;
+                case 'disconnected':
+                    statusDot.className = 'status-dot status-danger';
+                    statusText.textContent = '未连接';
+                    break;
+                case 'reconnecting':
+                    statusDot.className = 'status-dot status-warning';
+                    statusText.textContent = '重连中...';
+                    break;
+            }
+        }
+
+        // 更新进度显示
+        function updateProgressDisplay(progress) {
+            if (!progress) return;
+            
+            document.getElementById('totalTasks').textContent = utils.formatNumber(progress.total || 0);
+            document.getElementById('completedTasks').textContent = utils.formatNumber(progress.completed || 0);
+            document.getElementById('inProgressTasks').textContent = utils.formatNumber(progress.in_progress || 0);
+            document.getElementById('failedTasks').textContent = utils.formatNumber(progress.failed || 0);
+            
+            const percentage = progress.percentage || 0;
+            document.getElementById('progressPercent').textContent = utils.formatPercent(percentage);
+            document.getElementById('progressBar').style.width = `${percentage}%`;
+        }
+
+        // 更新预计时间
+        function updateETA(eta) {
+            document.getElementById('eta').textContent = eta || '计算中...';
+        }
+
+        // 更新Worker显示
+        function updateWorkerDisplay(workers) {
+            if (!workers) return;
+            
+            const summary = workers.summary || {};
+            const byStatus = summary.by_status || {};
+            
+            document.getElementById('idleWorkers').textContent = byStatus['idle'] || 0;
+            document.getElementById('busyWorkers').textContent = byStatus['busy'] || 0;
+            document.getElementById('offlineWorkers').textContent = byStatus['offline'] || 0;
+            
+            // 显示Worker详情
+            const workersList = document.getElementById('workersList');
+            const activeWorkers = workers.active_workers || [];
+            
+            if (activeWorkers.length === 0) {
+                workersList.innerHTML = '<div class="text-center text-muted">暂无活跃Worker</div>';
+                return;
+            }
+            
+            workersList.innerHTML = activeWorkers.map(worker => {
+                const statusClass = worker.status === 'idle' ? 'success' : 
+                                   worker.status === 'busy' ? 'warning' : 'danger';
+                                   
+                return `
+                    <div class="flex items-center justify-between p-2 border-bottom" style="border-color: var(--gray-100);">
+                        <div class="flex items-center gap-sm">
+                            <span class="status-dot status-${statusClass}"></span>
+                            <div>
+                                <div class="font-medium">${worker.worker_name}</div>
+                                <div class="text-xs text-muted">${worker.worker_type}</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm">${worker.current_tasks}/${worker.max_tasks}</div>
+                            <div class="text-xs text-muted">完成: ${worker.completed}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 更新活跃任务显示
+        function updateActiveTasksDisplay(activeTasks) {
+            if (!activeTasks || activeTasks.length === 0) return;
+            
+            // 显示活跃任务的Worker分配信息
+            activeTasks.forEach(task => {
+                if (task.worker && task.status === 'in_progress') {
+                    addTaskLogEntry(
+                        task.endpoint,
+                        `⟳ 处理中 (${task.worker.worker_name})`,
+                        'info'
+                    );
+                }
+            });
+        }
+
+        // 显示最近任务
+        function displayRecentTasks(tasks) {
+            const container = document.getElementById('taskStream');
+            container.innerHTML = '';
+            
+            tasks.forEach(task => {
+                const statusClass = utils.getStatusClass(task.status);
+                const icon = task.status === 'completed' ? '✓' : 
+                           task.status === 'failed' ? '✗' : 
+                           task.status === 'in_progress' ? '⟳' : '○';
+                
+                addTaskLogEntry(
+                    task.endpoint,
+                    `${icon} ${task.status}`,
+                    statusClass.replace('status-', '')
+                );
+            });
+        }
+
+        // 添加任务日志条目
+        function addTaskLogEntry(endpoint, message, type = 'info') {
+            if (isPaused) return;
+            
+            const container = document.getElementById('taskStream');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const entry = utils.createElement('div', {
+                className: 'flex items-center gap-sm p-2 border-bottom',
+                style: 'border-color: var(--gray-100);'
+            });
+            
+            const time = utils.createElement('span', {
+                className: 'text-muted text-xs',
+                textContent: timestamp,
+                style: 'width: 80px;'
+            });
+            
+            const endpointSpan = utils.createElement('span', {
+                className: 'flex-1',
+                textContent: endpoint
+            });
+            
+            const messageSpan = utils.createElement('span', {
+                className: `text-${type}`,
+                textContent: message
+            });
+            
+            entry.appendChild(time);
+            entry.appendChild(endpointSpan);
+            entry.appendChild(messageSpan);
+            
+            // 保持最多显示maxLogItems条
+            if (container.children.length >= maxLogItems) {
+                container.removeChild(container.firstChild);
+            }
+            
+            container.appendChild(entry);
+            
+            // 自动滚动到底部
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // 清空任务日志
+        function clearTaskLog() {
+            document.getElementById('taskStream').innerHTML = '';
+        }
+
+        // 切换暂停状态
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('pauseBtn');
+            btn.textContent = isPaused ? '继续' : '暂停';
+            
+            if (isPaused) {
+                addTaskLogEntry('系统', '⏸ 日志已暂停', 'warning');
+            } else {
+                addTaskLogEntry('系统', '▶ 日志已恢复', 'success');
+            }
+        }
+
+        // 页面卸载时断开WebSocket
+        window.addEventListener('beforeunload', function() {
+            wsManager.disconnect();
+        });
+    </script>
+</body>
+</html>

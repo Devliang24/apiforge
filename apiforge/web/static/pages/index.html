@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIForge - 任务概览</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/modern.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold">APIForge</h1>
+                <div class="flex gap-md">
+                    <a href="/" class="nav-link active">概览</a>
+                    <a href="/monitor" class="nav-link">实时监控</a>
+                    <a href="/statistics" class="nav-link">统计分析</a>
+                    <a href="/errors" class="nav-link">错误日志</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="container mt-4">
+        <!-- 统计卡片 -->
+        <div class="grid grid-cols-4 mb-4" id="statsCards">
+            <div class="card stat-card">
+                <div class="stat-label">总任务数</div>
+                <div class="stat-value" id="totalTasks">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">成功率</div>
+                <div class="stat-value" id="successRate">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">处理速度</div>
+                <div class="stat-value" id="processingSpeed">-</div>
+                <div class="text-xs text-muted">任务/分钟</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">队列状态</div>
+                <div class="flex justify-center items-center gap-sm mt-2">
+                    <span class="status-dot status-success"></span>
+                    <span id="queueStatus">运行中</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 实时图表 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="card-title">24小时任务趋势</h2>
+            </div>
+            <div style="height: 300px;">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 项目列表和最近任务 -->
+        <div class="grid grid-cols-2 gap-md">
+            <!-- 最近项目 -->
+            <div class="card">
+                <div class="card-header flex justify-between items-center">
+                    <h2 class="card-title">最近项目</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="refreshProjects()">刷新</button>
+                </div>
+                <div id="projectsList">
+                    <div class="text-center text-muted">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 最近任务 -->
+            <div class="card">
+                <div class="card-header flex justify-between items-center">
+                    <h2 class="card-title">最近任务</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="refreshTasks()">刷新</button>
+                </div>
+                <div id="recentTasksList">
+                    <div class="text-center text-muted">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 引入脚本 -->
+    <script src="/static/js/api.js?v=1.0.4"></script>
+    <script src="/static/js/utils-min.js?v=1.0.6"></script>
+    <script src="/static/lib/chart.min.js?v=1.0.3"></script>
+    <script>
+        // 全局变量
+        let trendChart = null;
+        let autoRefresh = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initChart();
+            loadDashboardData();
+            
+            // 设置自动刷新
+            autoRefresh = utils.createAutoRefresh(loadDashboardData, 10000);
+            autoRefresh.start();
+        });
+
+        // 初始化图表
+        function initChart() {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '完成任务',
+                        data: [],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.4
+                    }, {
+                        label: '失败任务',
+                        data: [],
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 加载仪表板数据
+        async function loadDashboardData() {
+            try {
+                // 并行加载所有数据
+                const [projects, recentTasks, hourlyStats] = await Promise.all([
+                    api.getProjects(),
+                    api.getRecentTasks({ limit: 10 }),
+                    api.getHourlyStatistics({ hours: 24 })
+                ]);
+
+                updateStats(projects.projects, recentTasks.tasks);
+                updateProjectsList(projects.projects);
+                updateRecentTasksList(recentTasks.tasks);
+                updateTrendChart(hourlyStats.data);
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+            }
+        }
+
+        // 更新统计数据
+        function updateStats(projects, tasks) {
+            // 计算总任务数
+            const totalTasks = projects.reduce((sum, p) => sum + p.total_tasks, 0);
+            document.getElementById('totalTasks').textContent = utils.formatNumber(totalTasks);
+
+            // 计算成功率
+            const completedTasks = projects.reduce((sum, p) => sum + p.completed_tasks, 0);
+            const successRate = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0;
+            document.getElementById('successRate').textContent = utils.formatPercentage(successRate);
+
+            // 计算处理速度（最近1小时）
+            const recentProject = projects[0];
+            if (recentProject && recentProject.created_at) {
+                const projectAge = (Date.now() - new Date(recentProject.created_at)) / 1000 / 60; // 分钟
+                const speed = projectAge > 0 ? (recentProject.completed_tasks / projectAge) : 0;
+                document.getElementById('processingSpeed').textContent = speed.toFixed(1);
+            }
+        }
+
+        // 更新项目列表
+        function updateProjectsList(projects) {
+            const container = document.getElementById('projectsList');
+            
+            if (!projects || projects.length === 0) {
+                utils.showEmptyState(container, '暂无项目');
+                return;
+            }
+
+            const list = utils.createElement('div', { className: 'flex flex-col gap-sm' });
+            
+            projects.slice(0, 5).forEach(project => {
+                const item = utils.createElement('div', {
+                    className: 'flex justify-between items-center p-2 hover:bg-gray-50 rounded cursor-pointer',
+                    onclick: () => window.location.href = `/monitor?project_id=${project.project_id}`
+                });
+
+                const info = utils.createElement('div');
+                const title = utils.createElement('div', {
+                    className: 'font-medium',
+                    textContent: `项目 ${project.project_id.substring(0, 8)}...`
+                });
+                const time = utils.createElement('div', {
+                    className: 'text-xs text-muted',
+                    textContent: utils.formatRelativeTime(project.created_at)
+                });
+                info.appendChild(title);
+                info.appendChild(time);
+
+                const stats = utils.createElement('div', {
+                    className: 'text-right'
+                });
+                const progress = utils.createElement('div', {
+                    className: 'text-sm',
+                    textContent: `${project.completed_tasks}/${project.total_tasks}`
+                });
+                const badge = utils.createElement('span', {
+                    className: `badge ${utils.getBadgeClass(project.status)}`,
+                    textContent: project.status
+                });
+                stats.appendChild(progress);
+                stats.appendChild(badge);
+
+                item.appendChild(info);
+                item.appendChild(stats);
+                list.appendChild(item);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(list);
+        }
+
+        // 更新最近任务列表
+        function updateRecentTasksList(tasks) {
+            const container = document.getElementById('recentTasksList');
+            
+            if (!tasks || tasks.length === 0) {
+                utils.showEmptyState(container, '暂无任务');
+                return;
+            }
+
+            const list = utils.createElement('div', { className: 'flex flex-col gap-sm' });
+            
+            tasks.forEach(task => {
+                const item = utils.createElement('div', {
+                    className: 'flex items-center gap-sm p-2 hover:bg-gray-50 rounded'
+                });
+
+                const statusDot = utils.createElement('span', {
+                    className: `status-dot ${utils.getStatusClass(task.status)}`
+                });
+
+                const info = utils.createElement('div', { className: 'flex-1' });
+                const endpoint = utils.createElement('div', {
+                    className: 'font-medium text-sm',
+                    textContent: task.endpoint
+                });
+                const time = utils.createElement('div', {
+                    className: 'text-xs text-muted',
+                    textContent: utils.formatRelativeTime(task.created_at)
+                });
+                info.appendChild(endpoint);
+                info.appendChild(time);
+
+                const duration = utils.createElement('div', {
+                    className: 'text-xs text-muted',
+                    textContent: task.duration ? utils.formatDuration(task.duration) : '-'
+                });
+
+                item.appendChild(statusDot);
+                item.appendChild(info);
+                item.appendChild(duration);
+                list.appendChild(item);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(list);
+        }
+
+        // 更新趋势图表
+        function updateTrendChart(data) {
+            if (!data || data.length === 0) return;
+
+            const labels = data.map(d => {
+                const date = new Date(d.time);
+                return `${date.getHours()}:00`;
+            });
+            const completed = data.map(d => d.completed || 0);
+            const failed = data.map(d => d.failed || 0);
+
+            trendChart.data.labels = labels;
+            trendChart.data.datasets[0].data = completed;
+            trendChart.data.datasets[1].data = failed;
+            trendChart.update();
+        }
+
+        // 刷新函数
+        function refreshProjects() {
+            loadDashboardData();
+        }
+
+        function refreshTasks() {
+            loadDashboardData();
+        }
+
+        // 页面卸载时停止自动刷新
+        window.addEventListener('beforeunload', function() {
+            if (autoRefresh) {
+                autoRefresh.stop();
+            }
+        });
+    </script>
+</body>
+</html>

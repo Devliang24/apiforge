@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIForge - 错误日志</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/modern.css">
+    <style>
+        .error-detail {
+            background-color: var(--gray-50);
+            padding: var(--spacing-md);
+            border-radius: var(--radius-md);
+            margin-top: var(--spacing-sm);
+            font-family: monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error-row {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .error-row:hover {
+            background-color: var(--gray-50);
+        }
+        .error-row.expanded {
+            background-color: var(--gray-100);
+        }
+        /* 防止表头换行 */
+        #errorLogsContainer th {
+            white-space: nowrap;
+            padding: var(--spacing-sm) var(--spacing-md);
+        }
+        /* 优化表格布局 */
+        #errorLogsContainer table {
+            table-layout: fixed;
+            width: 100%;
+        }
+        #errorLogsContainer td {
+            padding: var(--spacing-sm) var(--spacing-md);
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold">APIForge</h1>
+                <div class="flex gap-md">
+                    <a href="/" class="nav-link">概览</a>
+                    <a href="/monitor" class="nav-link">实时监控</a>
+                    <a href="/statistics" class="nav-link">统计分析</a>
+                    <a href="/errors" class="nav-link active">错误日志</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="container mt-4">
+        <!-- 筛选器 -->
+        <div class="card mb-4">
+            <div class="flex justify-between items-center">
+                <div class="select-group">
+                    <div class="select-container">
+                        <label for="timeRange" class="form-label mb-0">时间范围</label>
+                        <select id="timeRange" class="form-select" onchange="loadErrorLogs()">
+                            <option value="1h">最近1小时</option>
+                            <option value="24h" selected>最近24小时</option>
+                            <option value="7d">最近7天</option>
+                        </select>
+                    </div>
+                    
+                    <div class="select-container">
+                        <label for="errorType" class="form-label mb-0">错误类型</label>
+                        <select id="errorType" class="form-select" onchange="loadErrorLogs()">
+                            <option value="">全部类型</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="refreshErrorLogs()">刷新</button>
+            </div>
+        </div>
+
+        <!-- 错误统计 -->
+        <div class="grid grid-cols-4 mb-4">
+            <div class="card stat-card">
+                <div class="stat-label">总错误数</div>
+                <div class="stat-value text-danger" id="totalErrors">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">错误类型</div>
+                <div class="stat-value" id="uniqueErrors">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">受影响端点</div>
+                <div class="stat-value" id="affectedEndpoints">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">错误率</div>
+                <div class="stat-value text-danger" id="errorRate">-</div>
+            </div>
+        </div>
+
+        <!-- 错误分布图表 -->
+        <div class="grid grid-cols-2 gap-md mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">错误类型分布</h2>
+                </div>
+                <div style="height: 250px;">
+                    <canvas id="errorTypeChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">错误端点TOP 5</h2>
+                </div>
+                <div style="height: 250px;">
+                    <canvas id="errorEndpointChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 错误日志列表 -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">错误日志详情</h2>
+            </div>
+            <div id="errorLogsContainer">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width: 160px;">时间</th>
+                            <th style="width: 25%;">端点</th>
+                            <th style="width: 120px;">错误类型</th>
+                            <th style="width: auto;">错误信息</th>
+                            <th style="width: 90px;">重试次数</th>
+                        </tr>
+                    </thead>
+                    <tbody id="errorLogsBody">
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">加载中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- 引入脚本 -->
+    <script src="/static/js/api.js?v=1.0.4"></script>
+    <script src="/static/js/utils-min.js?v=1.0.6"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/lib/chart.min.js"></script>
+    <script>
+        // 全局变量
+        let errorTypeChart = null;
+        let errorEndpointChart = null;
+        let currentErrors = [];
+        let expandedRows = new Set();
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            loadErrorLogs();
+        });
+
+        // 初始化图表
+        function initCharts() {
+            // 错误类型分布图
+            const typeCtx = document.getElementById('errorTypeChart').getContext('2d');
+            errorTypeChart = new Chart(typeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#ef4444',
+                            '#f59e0b',
+                            '#3b82f6',
+                            '#10b981',
+                            '#8b5cf6'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                padding: 10,
+                                font: { size: 12 }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 错误端点图
+            const endpointCtx = document.getElementById('errorEndpointChart').getContext('2d');
+            errorEndpointChart = new Chart(endpointCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '错误次数',
+                        data: [],
+                        backgroundColor: '#ef4444'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 加载错误日志
+        async function loadErrorLogs() {
+            try {
+                const timeRange = document.getElementById('timeRange').value;
+                const errorType = document.getElementById('errorType').value;
+                
+                const params = { time_range: timeRange };
+                if (errorType) {
+                    params.error_type = errorType;
+                }
+
+                const data = await api.getErrorLogs(params);
+                currentErrors = data.errors || [];
+                
+                // 更新统计
+                updateErrorStats(data.stats);
+                
+                // 更新错误类型选项
+                updateErrorTypeOptions(currentErrors);
+                
+                // 更新图表
+                updateErrorCharts(currentErrors);
+                
+                // 更新错误列表
+                updateErrorList(currentErrors);
+                
+            } catch (error) {
+                console.error('Failed to load error logs:', error);
+                utils.showError(document.getElementById('errorLogsContainer'), '加载错误日志失败');
+            }
+        }
+
+        // 更新错误统计
+        function updateErrorStats(stats) {
+            document.getElementById('totalErrors').textContent = utils.formatNumber(stats.total_errors || 0);
+            document.getElementById('uniqueErrors').textContent = stats.unique_errors || 0;
+            document.getElementById('affectedEndpoints').textContent = stats.affected_endpoints || 0;
+            document.getElementById('errorRate').textContent = utils.formatPercent(stats.error_rate || 0);
+        }
+
+        // 更新错误类型选项
+        function updateErrorTypeOptions(errors) {
+            const errorTypes = new Set();
+            errors.forEach(error => {
+                if (error.error_type) {
+                    errorTypes.add(error.error_type);
+                }
+            });
+
+            const select = document.getElementById('errorType');
+            const currentValue = select.value;
+            
+            select.innerHTML = '<option value="">全部类型</option>' + 
+                Array.from(errorTypes).sort().map(type => 
+                    `<option value="${type}" ${type === currentValue ? 'selected' : ''}>${type}</option>`
+                ).join('');
+        }
+
+        // 更新错误图表
+        function updateErrorCharts(errors) {
+            // 统计错误类型
+            const typeCount = {};
+            const endpointCount = {};
+            
+            errors.forEach(error => {
+                // 错误类型统计
+                const type = error.error_type || 'Unknown';
+                typeCount[type] = (typeCount[type] || 0) + 1;
+                
+                // 端点统计
+                const endpoint = error.endpoint || 'Unknown';
+                endpointCount[endpoint] = (endpointCount[endpoint] || 0) + 1;
+            });
+
+            // 更新错误类型图表
+            const typeData = Object.entries(typeCount).sort((a, b) => b[1] - a[1]);
+            errorTypeChart.data.labels = typeData.map(([type]) => type);
+            errorTypeChart.data.datasets[0].data = typeData.map(([, count]) => count);
+            errorTypeChart.update();
+
+            // 更新端点错误图表 (TOP 5)
+            const endpointData = Object.entries(endpointCount)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+            errorEndpointChart.data.labels = endpointData.map(([endpoint]) => endpoint);
+            errorEndpointChart.data.datasets[0].data = endpointData.map(([, count]) => count);
+            errorEndpointChart.update();
+        }
+
+        // 更新错误列表
+        function updateErrorList(errors) {
+            const tbody = document.getElementById('errorLogsBody');
+            
+            if (errors.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无错误日志</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = errors.map((error, index) => {
+                const isExpanded = expandedRows.has(index);
+                return `
+                    <tr class="error-row ${isExpanded ? 'expanded' : ''}" onclick="toggleErrorDetail(${index})">
+                        <td>${utils.formatDateTime(error.created_at)}</td>
+                        <td>
+                            <span class="text-sm">${error.method} ${error.endpoint}</span>
+                        </td>
+                        <td>
+                            <span class="badge badge-danger">${error.error_type}</span>
+                        </td>
+                        <td>
+                            <div class="text-sm">${error.error_message}</div>
+                            ${isExpanded && error.stack_trace ? `
+                                <div class="error-detail">
+                                    <strong>Stack Trace:</strong>\n${error.stack_trace}
+                                    \n<strong>Task ID:</strong> ${error.task_id}
+                                    \n<strong>Project ID:</strong> ${error.session_id}
+                                </div>
+                            ` : ''}
+                        </td>
+                        <td class="text-center">${error.retry_count}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 切换错误详情显示
+        function toggleErrorDetail(index) {
+            if (expandedRows.has(index)) {
+                expandedRows.delete(index);
+            } else {
+                expandedRows.add(index);
+            }
+            updateErrorList(currentErrors);
+        }
+
+        // 刷新错误日志
+        function refreshErrorLogs() {
+            loadErrorLogs();
+        }
+
+        // 定时刷新
+        setInterval(loadErrorLogs, 30000); // 每30秒刷新一次
+
+        // 页面卸载时清理
+        window.addEventListener('beforeunload', function() {
+            if (errorTypeChart) errorTypeChart.destroy();
+            if (errorEndpointChart) errorEndpointChart.destroy();
+        });
+    </script>
+</body>
+</html>

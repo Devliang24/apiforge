@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIForge - 统计分析</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/modern.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold">APIForge</h1>
+                <div class="flex gap-md">
+                    <a href="/" class="nav-link">概览</a>
+                    <a href="/monitor" class="nav-link">实时监控</a>
+                    <a href="/statistics" class="nav-link active">统计分析</a>
+                    <a href="/errors" class="nav-link">错误日志</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="container mt-4">
+        <!-- 时间范围选择 -->
+        <div class="card mb-4">
+            <div class="flex justify-between items-center">
+                <div class="select-group">
+                    <label class="form-label mb-0">时间范围</label>
+                    <div class="flex gap-sm" id="timeRangeButtons">
+                        <button class="btn btn-sm btn-secondary active" data-hours="24">24小时</button>
+                        <button class="btn btn-sm btn-secondary" data-hours="168">7天</button>
+                        <button class="btn btn-sm btn-secondary" data-hours="720">30天</button>
+                        <button class="btn btn-sm btn-secondary" data-custom="true">自定义</button>
+                    </div>
+                    <div id="customDateRange" style="display: none;" class="flex items-center gap-sm ml-3">
+                        <input type="datetime-local" id="startDate" class="form-input" style="width: 200px;">
+                        <span class="text-muted">至</span>
+                        <input type="datetime-local" id="endDate" class="form-input" style="width: 200px;">
+                        <button class="btn btn-sm btn-primary" onclick="applyCustomRange()">应用</button>
+                    </div>
+                </div>
+                <div class="flex gap-sm">
+                    <button class="btn btn-sm btn-primary" onclick="refreshStatistics()">
+                        <span style="font-size: 1.1em;">↻</span> 刷新
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="exportStatistics()">
+                        <span style="font-size: 0.9em;">📊</span> 导出报表
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 概览统计 -->
+        <div class="grid grid-cols-4 mb-4">
+            <div class="card stat-card">
+                <div class="stat-label">总任务数</div>
+                <div class="stat-value" id="totalTasks">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">成功率</div>
+                <div class="stat-value" id="successRate">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">平均耗时</div>
+                <div class="stat-value" id="avgDuration">-</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">错误率</div>
+                <div class="stat-value text-danger" id="errorRate">-</div>
+            </div>
+        </div>
+
+        <!-- 图表区域 -->
+        <div class="grid grid-cols-2 gap-md mb-4">
+            <!-- 任务完成趋势 -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">任务完成趋势</h2>
+                </div>
+                <div style="height: 300px;">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 任务状态分布 -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">任务状态分布</h2>
+                </div>
+                <div style="height: 300px;">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 性能分析 -->
+        <div class="grid grid-cols-2 gap-md mb-4">
+            <!-- 响应时间分布 -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">响应时间分布</h2>
+                </div>
+                <div style="height: 300px;">
+                    <canvas id="responseTimeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 重试成功率 -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">重试成功率分析</h2>
+                </div>
+                <div style="height: 300px;">
+                    <canvas id="retryChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 端点性能排行 -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">端点性能排行 (TOP 10)</h2>
+            </div>
+            <div id="endpointPerformance">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>端点</th>
+                            <th>调用次数</th>
+                            <th>成功率</th>
+                            <th>平均耗时</th>
+                            <th>最大耗时</th>
+                        </tr>
+                    </thead>
+                    <tbody id="endpointTableBody">
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">加载中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- 引入脚本 -->
+    <script src="/static/js/api.js?v=1.0.4"></script>
+    <script src="/static/js/utils-min.js?v=1.0.6"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/lib/chart.min.js"></script>
+    <script>
+        // 全局变量
+        let currentTimeRange = 24; // 默认24小时
+        let charts = {
+            trend: null,
+            status: null,
+            responseTime: null,
+            retry: null
+        };
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initTimeRangeButtons();
+            initCharts();
+            loadStatistics();
+        });
+
+        // 初始化时间范围按钮
+        function initTimeRangeButtons() {
+            const buttons = document.querySelectorAll('#timeRangeButtons button');
+            buttons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // 移除所有active类
+                    buttons.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const customRange = document.getElementById('customDateRange');
+                    if (this.dataset.custom) {
+                        // 显示自定义日期选择
+                        customRange.style.display = 'flex';
+                        // 设置默认值
+                        const now = new Date();
+                        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                        document.getElementById('startDate').value = yesterday.toISOString().slice(0, 16);
+                        document.getElementById('endDate').value = now.toISOString().slice(0, 16);
+                    } else {
+                        // 隐藏自定义日期选择
+                        customRange.style.display = 'none';
+                        currentTimeRange = parseInt(this.dataset.hours);
+                        loadStatistics();
+                    }
+                });
+            });
+        }
+
+        // 初始化图表
+        function initCharts() {
+            // 任务完成趋势图
+            charts.trend = chartUtils.createTimelineChart(
+                document.getElementById('trendChart').getContext('2d'),
+                { labels: [], completed: [], failed: [] }
+            );
+
+            // 任务状态分布图
+            charts.status = chartUtils.createStatusChart(
+                document.getElementById('statusChart').getContext('2d'),
+                {}
+            );
+
+            // 响应时间分布图
+            charts.responseTime = chartUtils.createResponseTimeChart(
+                document.getElementById('responseTimeChart').getContext('2d'),
+                []
+            );
+
+            // 重试成功率图
+            charts.retry = chartUtils.createRetryChart(
+                document.getElementById('retryChart').getContext('2d'),
+                []
+            );
+        }
+
+        // 加载统计数据
+        async function loadStatistics() {
+            try {
+                // 构建请求参数
+                const params = { hours: currentTimeRange };
+                
+                // 如果是自定义时间范围
+                const customRange = document.getElementById('customDateRange');
+                if (customRange.style.display !== 'none') {
+                    const startDate = document.getElementById('startDate').value;
+                    const endDate = document.getElementById('endDate').value;
+                    if (startDate && endDate) {
+                        params.start_date = new Date(startDate).toISOString();
+                        params.end_date = new Date(endDate).toISOString();
+                        delete params.hours;
+                    }
+                }
+
+                // 并行加载所有数据
+                const [hourlyStats, performanceStats, recentTasks] = await Promise.all([
+                    api.getHourlyStatistics(params),
+                    api.getPerformanceStatistics(params),
+                    api.getRecentTasks({ ...params, limit: 1000 })
+                ]);
+
+                // 更新概览统计
+                updateOverviewStats(hourlyStats.data, performanceStats);
+
+                // 更新图表
+                updateTrendChart(hourlyStats.data);
+                updateStatusChart(performanceStats);
+                updateResponseTimeChart(performanceStats.duration_distribution || []);
+                updateRetryChart(performanceStats.retry_statistics || []);
+
+                // 更新端点性能表格
+                updateEndpointPerformance(recentTasks.tasks);
+
+            } catch (error) {
+                console.error('Failed to load statistics:', error);
+                utils.showError(document.querySelector('.container'), '加载统计数据失败');
+            }
+        }
+
+        // 更新概览统计
+        function updateOverviewStats(hourlyData, performanceData) {
+            // 计算总任务数
+            const totalTasks = hourlyData.reduce((sum, item) => sum + (item.total || 0), 0);
+            document.getElementById('totalTasks').textContent = utils.formatNumber(totalTasks);
+
+            // 计算成功率
+            const completedTasks = hourlyData.reduce((sum, item) => sum + (item.completed || 0), 0);
+            const successRate = totalTasks > 0 ? (completedTasks / totalTasks * 100) : 0;
+            document.getElementById('successRate').textContent = utils.formatPercent(successRate);
+
+            // 平均耗时
+            const avgDuration = performanceData.performance_by_status?.completed?.avg_duration || 0;
+            document.getElementById('avgDuration').textContent = utils.formatDuration(avgDuration);
+
+            // 错误率
+            const failedTasks = hourlyData.reduce((sum, item) => sum + (item.failed || 0), 0);
+            const errorRate = totalTasks > 0 ? (failedTasks / totalTasks * 100) : 0;
+            document.getElementById('errorRate').textContent = utils.formatPercent(errorRate);
+        }
+
+        // 更新任务完成趋势图
+        function updateTrendChart(data) {
+            const chartData = chartUtils.formatHourlyData(data);
+            charts.trend.data.labels = chartData.labels;
+            charts.trend.data.datasets[0].data = chartData.completed;
+            charts.trend.data.datasets[1].data = chartData.failed;
+            charts.trend.update();
+        }
+
+        // 更新任务状态分布图
+        function updateStatusChart(data) {
+            const statusData = data.performance_by_status || {};
+            const completed = statusData.completed?.count || 0;
+            const failed = statusData.failed?.count || 0;
+            
+            charts.status.data.datasets[0].data = [completed, failed, 0, 0];
+            charts.status.update();
+        }
+
+        // 更新响应时间分布图
+        function updateResponseTimeChart(data) {
+            if (!data || data.length === 0) return;
+            
+            charts.responseTime.data.labels = data.map(item => item.bucket);
+            charts.responseTime.data.datasets[0].data = data.map(item => item.count);
+            charts.responseTime.update();
+        }
+
+        // 更新重试成功率图
+        function updateRetryChart(data) {
+            if (!data || data.length === 0) return;
+            
+            const labels = data.map(item => `重试 ${item.retry_count} 次`);
+            const successRates = data.map(item => item.success_rate);
+            
+            charts.retry.data.labels = labels;
+            charts.retry.data.datasets[0].data = successRates;
+            charts.retry.update();
+        }
+
+        // 更新端点性能表格
+        function updateEndpointPerformance(tasks) {
+            const endpointStats = {};
+            
+            // 统计每个端点的性能数据
+            tasks.forEach(task => {
+                const endpoint = task.endpoint;
+                if (!endpointStats[endpoint]) {
+                    endpointStats[endpoint] = {
+                        count: 0,
+                        completed: 0,
+                        totalDuration: 0,
+                        maxDuration: 0
+                    };
+                }
+                
+                endpointStats[endpoint].count++;
+                if (task.status === 'completed') {
+                    endpointStats[endpoint].completed++;
+                    if (task.duration) {
+                        endpointStats[endpoint].totalDuration += task.duration;
+                        endpointStats[endpoint].maxDuration = Math.max(
+                            endpointStats[endpoint].maxDuration,
+                            task.duration
+                        );
+                    }
+                }
+            });
+
+            // 转换为数组并排序
+            const sortedEndpoints = Object.entries(endpointStats)
+                .map(([endpoint, stats]) => ({
+                    endpoint,
+                    count: stats.count,
+                    successRate: (stats.completed / stats.count * 100),
+                    avgDuration: stats.completed > 0 ? (stats.totalDuration / stats.completed) : 0,
+                    maxDuration: stats.maxDuration
+                }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 10);
+
+            // 更新表格
+            const tbody = document.getElementById('endpointTableBody');
+            if (sortedEndpoints.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = sortedEndpoints.map(item => `
+                <tr>
+                    <td>${item.endpoint}</td>
+                    <td>${utils.formatNumber(item.count)}</td>
+                    <td>
+                        <span class="${item.successRate >= 90 ? 'text-success' : item.successRate >= 70 ? 'text-warning' : 'text-danger'}">
+                            ${utils.formatPercent(item.successRate)}
+                        </span>
+                    </td>
+                    <td>${utils.formatDuration(item.avgDuration)}</td>
+                    <td>${utils.formatDuration(item.maxDuration)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 应用自定义时间范围
+        function applyCustomRange() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            if (!startDate || !endDate) {
+                alert('请选择开始和结束时间');
+                return;
+            }
+            
+            if (new Date(startDate) > new Date(endDate)) {
+                alert('开始时间不能晚于结束时间');
+                return;
+            }
+            
+            loadStatistics();
+        }
+
+        // 刷新统计数据
+        function refreshStatistics() {
+            loadStatistics();
+        }
+
+        // 导出统计报表
+        async function exportStatistics() {
+            try {
+                const params = { hours: currentTimeRange, format: 'csv' };
+                
+                // 如果是自定义时间范围
+                const customRange = document.getElementById('customDateRange');
+                if (customRange.style.display !== 'none') {
+                    const startDate = document.getElementById('startDate').value;
+                    const endDate = document.getElementById('endDate').value;
+                    if (startDate && endDate) {
+                        params.start_date = new Date(startDate).toISOString();
+                        params.end_date = new Date(endDate).toISOString();
+                        delete params.hours;
+                    }
+                }
+
+                const blob = await api.exportStatisticsReport(params);
+                const filename = `statistics_report_${new Date().toISOString().slice(0, 10)}.csv`;
+                api.downloadFile(blob, filename);
+            } catch (error) {
+                console.error('Failed to export statistics:', error);
+                alert('导出失败，请重试');
+            }
+        }
+
+        // 页面卸载时清理
+        window.addEventListener('beforeunload', function() {
+            Object.values(charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+        });
+    </script>
+</body>
+</html>
