@@ -42,6 +42,7 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "websockets>=12.0",
     "aiocron>=1.8",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
@@ -62,7 +63,7 @@ Repository = "https://github.com/Devliang24/apiforge.git"
 "Bug Tracker" = "https://github.com/Devliang24/apiforge/issues"
 
 [project.scripts]
-apiforge = "run:main_entry_point"
+apiforge = "apiforge.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
