@@ -50,13 +50,26 @@ APIForge automatically analyzes your OpenAPI/Swagger specifications and generate
 
 #### From PyPI (Recommended)
 
+**Using pip:**
 ```bash
 # Install from PyPI
 pip install apiforge
 ```
 
+**Using uv (Fast & Modern):**
+```bash
+# Install using uv (recommended for faster installation)
+uv pip install apiforge
+
+# Or create a virtual environment with uv
+uv venv apiforge-env
+source apiforge-env/bin/activate  # On Windows: apiforge-env\Scripts\activate
+uv pip install apiforge
+```
+
 #### From Source
 
+**Using pip:**
 ```bash
 # Clone the repository
 git clone https://github.com/Devliang24/apiforge.git
@@ -66,14 +79,29 @@ cd apiforge
 pip install -e .
 ```
 
+**Using uv:**
+```bash
+# Clone the repository
+git clone https://github.com/Devliang24/apiforge.git
+cd apiforge
+
+# Create virtual environment and install
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e .
+```
+
 #### Verify Installation
 
 ```bash
 # Check version
-apiforge --version
+apiforge version
 
 # Get help
 apiforge --help
+
+# Show system information
+apiforge info
 ```
 
 ### ⚙️ Configuration
@@ -111,19 +139,19 @@ Generate test cases from an OpenAPI specification:
 
 ```bash
 # Basic usage (uses default Qwen provider)
-python run.py --url https://petstore.swagger.io/v2/swagger.json --output petstore_tests.json
+apiforge generate --url https://petstore.swagger.io/v2/swagger.json --output petstore_tests.json
 
 # Generate test cases in CSV format for spreadsheet tools
-python run.py --url https://petstore.swagger.io/v2/swagger.json --output petstore_tests.csv
+apiforge generate --url https://petstore.swagger.io/v2/swagger.json --output petstore_tests.csv
 
 # With intermediate file outputs for debugging
-python run.py --url https://api.example.com/spec.json --output tests.json --intermediate
+apiforge generate --url https://api.example.com/spec.json --output tests.json --intermediate
 
 # Using a specific provider
-python run.py --url https://api.example.com/spec.json --output tests.json --provider openai
+apiforge generate --url https://api.example.com/spec.json --output tests.json --provider openai
 
 # Run with different execution modes
-python run.py --url https://api.example.com/spec.json --output tests.json --mode auto
+apiforge generate --url https://api.example.com/spec.json --output tests.json --mode auto
 # Available modes: auto (intelligent progressive), fast (maximum concurrency), 
 #                  smart (dynamic scheduling), ai-analysis (AI-powered deep analysis)
 ```
@@ -134,10 +162,10 @@ APIForge includes a powerful monitoring dashboard for tracking test generation p
 
 ```bash
 # Start the monitoring dashboard standalone
-python run.py dashboard
+apiforge dashboard
 
 # Or run generation with automatic monitoring
-python run.py --url https://api.example.com/spec.json --output tests.json --monitor
+apiforge generate --url https://api.example.com/spec.json --output tests.json --monitor
 ```
 
 Access the dashboard at:
@@ -158,12 +186,14 @@ Features:
 
 ```python
 import asyncio
-from apiforge.orchestrator import run_generation
+from apiforge.generation.orchestrator import run_generation
+from apiforge.scheduling.models import ExecutionMode
 
 async def generate_tests():
     await run_generation(
         url="https://petstore.swagger.io/v2/swagger.json",
-        output_path="test_suite.json"
+        output_path="test_suite.json",
+        mode=ExecutionMode.AUTO
     )
 
 asyncio.run(generate_tests())
@@ -175,12 +205,18 @@ asyncio.run(generate_tests())
 
 ```bash
 # Generate test cases
-python run.py --url <OPENAPI_URL> --output <OUTPUT_FILE> [OPTIONS]
+apiforge generate --url <OPENAPI_URL> --output <OUTPUT_FILE> [OPTIONS]
 
 # Show system information
-python run.py info 
+apiforge info 
 
-# Available options:
+# Show version
+apiforge version
+
+# Start monitoring dashboard
+apiforge dashboard
+
+# Available generate options:
 #   --url, -u          URL of OpenAPI specification (required)
 #   --output, -o       Output file path (.json or .csv) (required)
 #   --verbose, -v      Enable verbose logging
@@ -189,9 +225,6 @@ python run.py info
 #   --mode, -m         Execution mode: auto|fast|smart|ai-analysis (default: auto)
 #   --monitor, -M      Enable real-time monitoring dashboard
 #   --help            Show help message
-
-# Generate CSV template for manual test creation
-python generate_csv_template.py --output test_template.csv
 ```
 
 ### ⚙️ Configuration Options
@@ -221,7 +254,7 @@ LOG_FORMAT=structured
 
 ### 💾 Output Formats
 
-APITestGen supports multiple output formats:
+APIForge supports multiple output formats:
 
 #### JSON Format (Default)
 
@@ -343,7 +376,7 @@ sequenceDiagram
     participant LLM
     participant FileSystem
 
-    CLI->>+SpecLoader: run.py --url spec.json
+    CLI->>+SpecLoader: apiforge generate --url spec.json
     SpecLoader->>+SpecLoader: HTTP GET
     SpecLoader-->>-SpecLoader: OpenAPI Spec
     
@@ -372,9 +405,30 @@ sequenceDiagram
 
 ### 🔨 Setup Development Environment
 
+**Using pip:**
 ```bash
 # Install development dependencies
 pip install -e ".[dev]"
+
+# Run code formatting
+black apiforge/
+isort apiforge/
+
+# Run type checking
+mypy apiforge/
+
+# Run linting
+flake8 apiforge/
+```
+
+**Using uv (Recommended for faster development):**
+```bash
+# Create development environment
+uv venv --python 3.8
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install with development dependencies
+uv pip install -e ".[dev]"
 
 # Run code formatting
 black apiforge/
@@ -420,8 +474,7 @@ cp .env.example .env
 # Edit .env with your API key
 
 # Run Petstore example
-cd examples
-python generate_petstore_tests.py
+apiforge generate --url https://petstore.swagger.io/v2/swagger.json --output petstore_tests.json
 ```
 
 ## 🛡️ Security
@@ -433,7 +486,7 @@ python generate_petstore_tests.py
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+We welcome contributions! Please open an issue or submit a pull request on GitHub.
 
 ### 🔄 Development Workflow
 

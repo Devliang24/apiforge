@@ -106,12 +106,11 @@ def generate(url: str, output: str, verbose: bool, provider: str, mode: str,
             async def run_with_progress():
                 try:
                     await run_generation(
-                        url=url,
+                        spec_url=url,
                         output_path=output,
-                        provider=provider,
-                        mode=ExecutionMode(mode),
-                        save_intermediate=intermediate,
-                        intermediate_dir=intermediate_dir
+                        enable_intermediate_outputs=intermediate,
+                        intermediate_dir=intermediate_dir,
+                        execution_mode=ExecutionMode(mode)
                     )
                 except OrchestratorError as e:
                     console.print(f"[red]Error: {e}[/red]")
