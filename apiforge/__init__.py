@@ -5,17 +5,18 @@ This package provides tools to automatically generate comprehensive API test cas
 from OpenAPI/Swagger specifications using Large Language Models (LLMs).
 """
 
+from apiforge._version import __version__, __version_info__
 from apiforge.config import settings
 from apiforge.logger import logger
 
-__version__ = "0.1.0"
-__author__ = "APIForge Team"
-__email__ = "team@apiforge.io"
+__author__ = "Devliang24"
+__email__ = "developer.liang24@gmail.com"
 
 __all__ = [
     "settings",
     "logger",
     "__version__",
+    "__version_info__",
     "__author__",
     "__email__",
 ]

@@ -7,7 +7,7 @@ name = "apiforge"
 version = "0.1.0"
 description = "Enterprise-grade API test case generator from OpenAPI specifications"
 authors = [
-    {name = "APIForge Team", email = "team@apiforge.io"}
+    {name = "Devliang24", email = "developer.liang24@gmail.com"}
 ]
 readme = "README.md"
 license = {text = "MIT"}
@@ -56,17 +56,25 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/apiforge/apiforge"
-Documentation = "https://docs.apiforge.io"
-Repository = "https://github.com/apiforge/apiforge.git"
-"Bug Tracker" = "https://github.com/apiforge/apiforge/issues"
+Homepage = "https://github.com/Devliang24/apiforge"
+Documentation = "https://github.com/Devliang24/apiforge#readme"
+Repository = "https://github.com/Devliang24/apiforge.git"
+"Bug Tracker" = "https://github.com/Devliang24/apiforge/issues"
 
 [project.scripts]
-apiforge = "apiforge.cli:main"
+apiforge = "run:main_entry_point"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["apiforge*"]
+exclude = ["tests*", "docs*", "examples*"]
+
+[tool.setuptools.package-data]
+apiforge = [
+    "web/static/**/*",
+    "web/migrations/*.sql",
+    "core/db/sqlite/*.sql",
+]
 
 [tool.black]
 line-length = 88

@@ -357,6 +357,11 @@ cli.add_command(info)
 cli.add_command(dashboard)
 
 
+def main_entry_point():
+    """Entry point for the installed package."""
+    cli()
+
+
 if __name__ == "__main__":
     # If called directly, run the main generate command
     main()

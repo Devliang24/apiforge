@@ -48,13 +48,32 @@ APIForge automatically analyzes your OpenAPI/Swagger specifications and generate
 
 ### 📦 Installation
 
+#### From PyPI (Recommended)
+
+```bash
+# Install from PyPI
+pip install apiforge
+```
+
+#### From Source
+
 ```bash
 # Clone the repository
-git clone https://github.com/apiforge/apiforge.git
+git clone https://github.com/Devliang24/apiforge.git
 cd apiforge
 
-# Install dependencies
+# Install in development mode
 pip install -e .
+```
+
+#### Verify Installation
+
+```bash
+# Check version
+apiforge --version
+
+# Get help
+apiforge --help
 ```
 
 ### ⚙️ Configuration
