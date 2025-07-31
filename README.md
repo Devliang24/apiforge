@@ -276,7 +276,7 @@ APIForge follows a modular, enterprise-grade architecture:
 │  │ • Async Ops │      │ • Pydantic  │      │ • Templates │           │
 │  │ • Retry     │      │ • Validation│      │ • Providers │           │
 │  └─────────────┘      └─────────────┘      └─────────────┘           │
-│        │                     │                     │                    │
+│        │                     │                     │                   │
 │        └─────────────────────┴─────────────────────┘                   │
 │                              │                                          │
 │                    ┌─────────▼──────────┐                              │
